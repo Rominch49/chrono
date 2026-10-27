@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Chrono Punition</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, Arial, sans-serif;
+    background: #1e1e2e; color: #fff; text-align: center;
+  }
+  .carte { width: 92%; max-width: 420px; padding: 24px; }
+  h1 { font-size: 26px; margin: 0 0 20px; }
+  input {
+    width: 140px; font-size: 32px; text-align: center;
+    padding: 10px; border-radius: 12px; border: none;
+  }
+  button {
+    touch-action: manipulation; cursor: pointer;
+    border: none; border-radius: 14px; color: #fff;
+    font-size: 20px; padding: 14px 18px; margin: 6px;
+  }
+  .lancer { background: #22c55e; font-size: 24px; padding: 16px 40px; margin-top: 20px; }
+  .ajout { background: #3b82f6; }
+  .pause { background: #f59e0b; }
+  .stop { background: #ef4444; }
+  #temps { font-size: 84px; font-weight: bold; margin: 20px 0; font-variant-numeric: tabular-nums; }
+  #decompte { display: none; }
+  body.fini { background: #b91c1c; animation: clignote 1s infinite; }
+  @keyframes clignote { 50% { background: #7f1d1d; } }
+</style>
+</head>
+<body>
+<div class="carte">
+  <h1>⏱️ Chrono Punition</h1>
+
+  <div id="saisie">
+    <p>Combien de minutes ?</p>
+    <input id="minutes" type="number" inputmode="decimal" value="10" min="1">
+    <br>
+    <button type="button" class="lancer" id="btnLancer">▶ Lancer</button>
+  </div>
+
+  <div id="decompte">
+    <div id="temps">00:00</div>
+    <div>
+      <button type="button" class="ajout" data-add="1">+1 min</button>
+      <button type="button" class="ajout" data-add="5">+5 min</button>
+      <button type="button" class="ajout" data-add="10">+10 min</button>
+    </div>
+    <div>
+      <button type="button" class="pause" id="btnPause">⏸ Pause</button>
+      <button type="button" class="stop" id="btnStop">⏹ Arrêter</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  var fin = 0;          // heure de fin (timestamp)
+  var reste = 0;        // secondes restantes (utilisé en pause)
+  var timer = null;
+  var enPause = false;
+  var audioCtx = null;
+
+  var elSaisie = document.getElementById('saisie');
+  var elDecompte = document.getElementById('decompte');
+  var elTemps = document.getElementById('temps');
+  var btnPause = document.getElementById('btnPause');
+
+  // Débloque le son sur mobile (appelé au clic sur Lancer)
+  function debloquerAudio() {
+    try {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') { audioCtx.resume(); }
+    } catch (e) {}
+  }
+
+  function formater(s) {
+    var m = Math.floor(s / 60);
+    var sec = s % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  function afficher() {
+    var s = Math.max(0, Math.ceil((fin - Date.now()) / 1000));
+    elTemps.textContent = formater(s);
+    return s;
+  }
+
+  function tick() {
+    var s = afficher();
+    if (s <= 0) { terminer(); }
+  }
+
+  function demarrer(secondes) {
+    clearInterval(timer);
+    document.body.classList.remove('fini');
+    enPause = false;
+    btnPause.textContent = '⏸ Pause';
+    fin = Date.now() + secondes * 1000;
+    afficher();
+    timer = setInterval(tick, 250);
+  }
+
+  function lancer() {
+    var champ = document.getElementById('minutes');
+    champ.blur(); // ferme le clavier sur mobile
+    debloquerAudio();
+
+    // accepte "10", "10,5" ou "10.5"
+    var valeur = parseFloat(String(champ.value).replace(',', '.'));
+    if (isNaN(valeur) || valeur <= 0) {
+      alert('Entre un nombre de minutes (ex : 10)');
+      return;
+    }
+
+    elSaisie.style.display = 'none';
+    elDecompte.style.display = 'block';
+    demarrer(Math.round(valeur * 60));
+  }
+
+  function ajouter(minutes) {
+    debloquerAudio();
+    if (enPause) {
+      reste += minutes * 60;
+      elTemps.textContent = formater(reste);
+    } else if (document.body.classList.contains('fini')) {
+      // le chrono était terminé : on repart avec les minutes ajoutées
+      demarrer(minutes * 60);
+    } else {
+      fin += minutes * 60 * 1000;
+      afficher();
+    }
+  }
+
+  function pause() {
+    if (document.body.classList.contains('fini')) { return; }
+    if (!enPause) {
+      reste = Math.max(0, Math.ceil((fin - Date.now()) / 1000));
+      clearInterval(timer);
+      enPause = true;
+      btnPause.textContent = '▶ Reprendre';
+    } else {
+      demarrer(reste);
+    }
+  }
+
+  function arreter() {
+    clearInterval(timer);
+    enPause = false;
+    document.body.classList.remove('fini');
+    elDecompte.style.display = 'none';
+    elSaisie.style.display = 'block';
+  }
+
+  function terminer() {
+    clearInterval(timer);
+    document.body.classList.add('fini');
+    elTemps.textContent = '00:00';
+    if (navigator.vibrate) { navigator.vibrate([500, 200, 500, 200, 500]); }
+    musique();
+  }
+
+  // Mélodie joyeuse jouée à la fin
+  function musique() {
+    try {
+      debloquerAudio();
+      var ctx = audioCtx;
+      if (!ctx) { return; }
+
+      // [fréquence en Hz, durée en secondes]
+      var notes = [
+        [523, 0.2], [659, 0.2], [784, 0.2], [1047, 0.4],  // Do Mi Sol Do aigu
+        [784, 0.2], [1047, 0.6],                           // Sol Do aigu
+        [880, 0.2], [988, 0.2], [1047, 0.2], [1319, 0.7]   // La Si Do Mi aigu
+      ];
+
+      var t = ctx.currentTime + 0.05;
+      for (var i = 0; i < notes.length; i++) {
+        var o = ctx.createOscillator();
+        var g = ctx.createGain();
+        o.type = 'triangle';              // son doux et agréable
+        o.frequency.value = notes[i][0];
+        o.connect(g);
+        g.connect(ctx.destination);
+
+        // fondu pour éviter les "clics" désagréables
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.35, t + 0.02);
+        g.gain.linearRampToValueAtTime(0, t + notes[i][1]);
+
+        o.start(t);
+        o.stop(t + notes[i][1] + 0.05);
+        t += notes[i][1];
+      }
+    } catch (e) {}
+  }
+
+  // Événements (fiables sur mobile)
+  document.getElementById('btnLancer').addEventListener('click', lancer);
+  document.getElementById('btnPause').addEventListener('click', pause);
+  document.getElementById('btnStop').addEventListener('click', arreter);
+  var boutonsAjout = document.querySelectorAll('[data-add]');
+  for (var i = 0; i < boutonsAjout.length; i++) {
+    boutonsAjout[i].addEventListener('click', function () {
+      ajouter(parseInt(this.getAttribute('data-add'), 10));
+    });
+  }
+</script>
+</body>
+</html>
